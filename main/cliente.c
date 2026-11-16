@@ -16,7 +16,7 @@
 
 static const char *TAG = "cliente";
 
-#define LIMITE "----minisecretario7d3f9a1c40b2"
+#define LIMITE "----minisecia7d3f9a1c40b2"
 #define TROZO (8 * 1024)
 
 typedef struct {

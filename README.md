@@ -1,4 +1,4 @@
-# Minisecretario
+# MiniSecIA
 
 Grabadora de bolsillo sobre la **Waveshare ESP32-S3-ePaper-1.54G**. Pulsas un botón, hablas, y la nota de voz se sube a ConvocAUTOrias (`POST /voz`), que la transcribe y crea la tarea, idea, evento, etc. en Nextcloud. La confirmación es **sonora** (pitidos). La pantalla e-Paper solo muestra imágenes decorativas.
 
@@ -100,7 +100,7 @@ Carpetas útiles (se crean solas si hace falta):
 Requisitos: [ESP-IDF](https://docs.espressif.com/projects/esp-idf/) **≥ 5.5.1**, cable USB-C de datos.
 
 ```bash
-cd minisecretario
+cd MiniSecIA
 idf.py set-target esp32s3    # solo la primera vez
 idf.py build
 idf.py -p COM9 flash monitor # en Linux/macOS: /dev/ttyACM0 o similar
@@ -121,7 +121,7 @@ Imágenes sincronizadas: …
 Mostrando /sdcard/img/remotas/….bin
 ```
 
-Luego prueba una grabación corta («tarea probar el minisecretario»).
+Luego prueba una grabación corta («tarea probar MiniSecIA»).
 
 ---
 
@@ -142,7 +142,7 @@ Luego prueba una grabación corta («tarea probar el minisecretario»).
 | `sync_imagenes_horas` | 24 | Periodo de descarga de imágenes |
 | `timeout_http_seg` | 240 | Timeout de `POST /voz` |
 
-También se pueden fijar valores por defecto en `idf.py menuconfig` → **Minisecretario** (no pongas tokens reales si vas a compartir el binario).
+También se pueden fijar valores por defecto en `idf.py menuconfig` → **MiniSecIA** (no pongas tokens reales si vas a compartir el binario).
 
 ---
 

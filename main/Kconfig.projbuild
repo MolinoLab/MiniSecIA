@@ -1,4 +1,4 @@
-menu "Minisecretario"
+menu "MiniSecIA"
 
     comment "Valores por defecto. config.txt en la microSD los sobrescribe (se guardan en NVS)."
 

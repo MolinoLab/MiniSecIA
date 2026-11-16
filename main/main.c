@@ -1,4 +1,4 @@
-// Minisecretario: grabadora de bolsillo que envía notas de voz a ConvocAUTOrias (POST /voz).
+// MiniSecIA: grabadora de bolsillo que envía notas de voz a ConvocAUTOrias (POST /voz).
 //
 // BOOT corto: grabar / terminar        PWR corto: cancelar la grabación, o estado de la cola
 // BOOT largo: sincronizar e imagen      PWR largo: apagar
