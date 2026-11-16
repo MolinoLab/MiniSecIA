@@ -1,0 +1,75 @@
+menu "Minisecretario"
+
+    comment "Valores por defecto. config.txt en la microSD los sobrescribe (se guardan en NVS)."
+
+    config MS_URL_SERVIDOR
+        string "URL base del servidor (sin barra final)"
+        default ""
+        help
+            Por ejemplo https://voz.midominio.es . El dispositivo llama a /voz e /imagenes/*.
+
+    config MS_TOKEN
+        string "Token Bearer del dispositivo (ESP32_TOKENS en el servidor)"
+        default ""
+
+    config MS_DEVICE_ID
+        string "Identificador del dispositivo"
+        default "bolsillo"
+
+    config MS_WIFI1_SSID
+        string "Wi-Fi 1: SSID"
+        default ""
+
+    config MS_WIFI1_PASS
+        string "Wi-Fi 1: contraseña"
+        default ""
+
+    config MS_WIFI2_SSID
+        string "Wi-Fi 2: SSID (p. ej. punto de acceso del móvil)"
+        default ""
+
+    config MS_WIFI2_PASS
+        string "Wi-Fi 2: contraseña"
+        default ""
+
+    config MS_VOLUMEN
+        int "Volumen de los sonidos (0-100)"
+        range 0 100
+        default 70
+
+    config MS_GANANCIA_MIC
+        int "Ganancia del micrófono en dB (0-42)"
+        range 0 42
+        default 30
+
+    config MS_MAX_GRABACION_SEG
+        int "Duración máxima de una grabación (s). El servidor acepta 15 MB = ~470 s"
+        range 10 420
+        default 300
+
+    config MS_REPOSO_SEG
+        int "Segundos sin actividad antes de dormir"
+        range 20 3600
+        default 90
+
+    config MS_REINTENTO_MIN
+        int "Minutos entre reintentos de subida si quedan audios en cola"
+        range 1 1440
+        default 15
+
+    config MS_IMAGEN_HORAS
+        int "Horas entre cambios de imagen en la pantalla (0 = solo manual)"
+        range 0 720
+        default 6
+
+    config MS_SYNC_IMAGENES_HORAS
+        int "Horas entre sincronizaciones de imágenes con el servidor"
+        range 1 720
+        default 24
+
+    config MS_TIMEOUT_HTTP_SEG
+        int "Timeout HTTP (s). La transcripción de audios largos tarda"
+        range 30 900
+        default 240
+
+endmenu

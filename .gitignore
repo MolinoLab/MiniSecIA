@@ -1,0 +1,22 @@
+# ESP-IDF / build
+build/
+sdkconfig
+sdkconfig.old
+dependencies.lock
+managed_components/
+.vscode/
+.idea/
+*.pyc
+__pycache__/
+
+# Secretos y config local (nunca subir tokens ni Wi-Fi)
+config.txt
+*.pem
+*.key
+.env
+.env.*
+
+# Basura del sistema
+.DS_Store
+Thumbs.db
+Desktop.ini

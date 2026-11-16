@@ -1,0 +1,27 @@
+# Copia este archivo a la raíz de la microSD como config.txt (FAT32).
+# Al arrancar, el dispositivo lo importa a su memoria interna (NVS) y BORRA el archivo,
+# porque contiene el token y las contraseñas. Solo se cambian las claves presentes:
+# para modificar un valor basta con un config.txt con esa única línea.
+
+# Redes Wi-Fi 2,4 GHz (hasta 3). Se usa la de mejor señal disponible.
+wifi1_ssid=MiCasa
+wifi1_pass=contraseña-de-casa
+wifi2_ssid=MiMovil
+wifi2_pass=contraseña-del-movil
+#wifi3_ssid=
+#wifi3_pass=
+
+# Servidor (sin barra final) y credenciales del dispositivo (ESP32_TOKENS en el VPS)
+url=https://voz.ejemplo.es
+token=PEGA_AQUI_EL_TOKEN_DEL_DISPOSITIVO
+device_id=bolsillo
+
+# Opcionales (valores por defecto entre paréntesis)
+#volumen=70                # 0-100
+#ganancia_mic=30           # dB, 0-42
+#max_grabacion_seg=300     # 10-420
+#reposo_seg=90             # inactividad antes de dormir
+#reintento_min=15          # reintento de subida con audios en cola (se alarga si sigue fallando)
+#imagen_horas=6            # cambio de imagen; 0 = solo manual
+#sync_imagenes_horas=24
+#timeout_http_seg=240
