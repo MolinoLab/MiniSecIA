@@ -24,6 +24,12 @@ void audio_apagar(void);
 void audio_tono(tono_t tono);
 void audio_pitidos(int n);
 
+// Reproduce un Ogg Opus. Bloqueante. false si se pidió parar o el fichero no se pudo decodificar.
+bool audio_reproducir_opus(const char *ruta);
+void audio_reproducir_parar(void);
+void audio_reproduccion_ocupar(bool ocupada);
+bool audio_reproduciendo(void);
+
 // Graba a `ruta` (WAV 16 kHz mono 16 bits) hasta audio_grabar_parar o `max_seg`.
 bool audio_grabar_iniciar(const char *ruta, int max_seg);
 

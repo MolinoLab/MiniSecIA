@@ -7,6 +7,7 @@
 
 #include "ajustes.h"
 #include "almacen.h"
+#include "audio.h"
 #include "energia.h"
 #include "esp_crt_bundle.h"
 #include "esp_heap_caps.h"
@@ -21,14 +22,21 @@ static const char *TAG = "cliente";
 
 typedef struct {
     char estado[16];
+    char audio_flag[4];
+    char audio_path[96];
 } respuesta_t;
 
 static esp_err_t manejador(esp_http_client_event_t *evt)
 {
     respuesta_t *r = (respuesta_t *)evt->user_data;
-    if (evt->event_id == HTTP_EVENT_ON_HEADER && r && evt->header_key && evt->header_value &&
-        strcasecmp(evt->header_key, "X-Voz-Estado") == 0) {
-        strlcpy(r->estado, evt->header_value, sizeof(r->estado));
+    if (evt->event_id == HTTP_EVENT_ON_HEADER && r && evt->header_key && evt->header_value) {
+        if (strcasecmp(evt->header_key, "X-Voz-Estado") == 0) {
+            strlcpy(r->estado, evt->header_value, sizeof(r->estado));
+        } else if (strcasecmp(evt->header_key, "X-Voz-Audio") == 0) {
+            strlcpy(r->audio_flag, evt->header_value, sizeof(r->audio_flag));
+        } else if (strcasecmp(evt->header_key, "X-Voz-Audio-Path") == 0) {
+            strlcpy(r->audio_path, evt->header_value, sizeof(r->audio_path));
+        }
     }
     return ESP_OK;
 }
@@ -91,8 +99,12 @@ static int leer_cuerpo(esp_http_client_handle_t c, char *buf, size_t n)
     return (int)total;
 }
 
-resultado_subida_t cliente_subir(const char *ruta, const char *request_id, const char *grabado_en)
+resultado_subida_t cliente_subir(const char *ruta, const char *request_id, const char *grabado_en,
+                                 char *audio_path, size_t audio_path_n)
 {
+    if (audio_path && audio_path_n > 0) {
+        audio_path[0] = '\0';
+    }
     long tam = almacen_tamano(ruta);
     FILE *f = tam > 0 ? fopen(ruta, "rb") : NULL;
     if (!f) {
@@ -157,10 +169,19 @@ resultado_subida_t cliente_subir(const char *ruta, const char *request_id, const
     } else {
         trozo[0] = '\0';
     }
-    ESP_LOGI(TAG, "POST /voz %s -> %d %s %s", request_id, estado, resp.estado, trozo);
+    ESP_LOGI(TAG, "POST /voz %s -> %d %s audio=%s path=%s %s", request_id, estado, resp.estado,
+             resp.audio_flag, resp.audio_path, trozo);
 
     if (estado == 200) {
-        res = strcmp(resp.estado, "pendiente") == 0 ? SUBIDA_PENDIENTE : SUBIDA_OK;
+        if (strcmp(resp.estado, "pendiente") == 0) {
+            res = SUBIDA_PENDIENTE;
+        } else {
+            res = SUBIDA_OK;
+            bool hay_audio = (strcmp(resp.estado, "audio") == 0) || (resp.audio_flag[0] == '1');
+            if (hay_audio && resp.audio_path[0] == '/' && audio_path && audio_path_n > 1) {
+                strlcpy(audio_path, resp.audio_path, audio_path_n);
+            }
+        }
     } else if (estado == 422) {
         // Sin la cabecera es un error de validación de FastAPI (petición mal formada).
         res = strcmp(resp.estado, "vacio") == 0 ? SUBIDA_VACIA : SUBIDA_ERROR_CONFIG;
@@ -173,6 +194,51 @@ resultado_subida_t cliente_subir(const char *ruta, const char *request_id, const
     esp_http_client_close(c);
     esp_http_client_cleanup(c);
     return res;
+}
+
+#define RUTA_TMP_RESPUESTA "/sdcard/tmp_respuesta.opus"
+
+bool cliente_reproducir_respuesta(const char *audio_path)
+{
+    if (!audio_path || audio_path[0] != '/') {
+        return false;
+    }
+    // Solo paths del servidor de respuestas efímeras.
+    static const char PREF[] = "/voz/respuesta/";
+    if (strncmp(audio_path, PREF, sizeof(PREF) - 1) != 0) {
+        ESP_LOGW(TAG, "Path de audio no permitido: %s", audio_path);
+        return false;
+    }
+    const char *nombre = audio_path + (sizeof(PREF) - 1);
+    size_t nlen = strlen(nombre);
+    if (nlen < 6 || strcmp(nombre + nlen - 5, ".opus") != 0) {
+        return false;
+    }
+    char id[80];
+    if (nlen - 5 >= sizeof(id)) {
+        return false;
+    }
+    memcpy(id, nombre, nlen - 5);
+    id[nlen - 5] = '\0';
+
+    uint8_t sha[32];
+    long bytes = 0;
+    remove(RUTA_TMP_RESPUESTA);
+    int cod = cliente_descargar(audio_path, RUTA_TMP_RESPUESTA, sha, &bytes);
+    if (cod != 200 || bytes <= 0) {
+        ESP_LOGW(TAG, "No se pudo bajar respuesta %s (HTTP %d)", audio_path, cod);
+        remove(RUTA_TMP_RESPUESTA);
+        return false;
+    }
+    ESP_LOGI(TAG, "Reproduciendo respuesta %s (%ld bytes)", id, bytes);
+    bool ok = audio_reproducir_opus(RUTA_TMP_RESPUESTA);
+    remove(RUTA_TMP_RESPUESTA);
+
+    char ack[128];
+    snprintf(ack, sizeof(ack), "/voz/respuesta/%s/ack", id);
+    int ack_cod = cliente_post(ack);
+    ESP_LOGI(TAG, "ACK respuesta %s -> %d", id, ack_cod);
+    return ok;
 }
 
 int cliente_get_texto(const char *camino, char *buf, size_t n)
@@ -233,5 +299,20 @@ int cliente_descargar(const char *camino, const char *destino, uint8_t sha256[32
     if (bytes) {
         *bytes = total;
     }
+    return estado;
+}
+
+int cliente_post(const char *camino)
+{
+    esp_http_client_handle_t c = crear(camino, HTTP_METHOD_POST, NULL);
+    if (!c) {
+        return -1;
+    }
+    int estado = -1;
+    if (esp_http_client_open(c, 0) == ESP_OK && esp_http_client_fetch_headers(c) >= 0) {
+        estado = esp_http_client_get_status_code(c);
+    }
+    esp_http_client_close(c);
+    esp_http_client_cleanup(c);
     return estado;
 }

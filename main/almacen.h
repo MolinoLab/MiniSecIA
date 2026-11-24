@@ -9,6 +9,8 @@
 #define DIR_FALLIDOS  "/sdcard/fallidos"
 #define DIR_IMG_FIJAS "/sdcard/img/fijas"
 #define DIR_IMG_REM   "/sdcard/img/remotas"
+#define DIR_ESCUCHA   "/sdcard/escucha"
+#define DIR_ESCUCHA_HECHOS "/sdcard/escucha/hechos"
 
 #define RUTA_MAX 128
 #define WAV_CABECERA 44

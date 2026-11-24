@@ -7,6 +7,9 @@
 #include "almacen.h"
 #include "driver/i2s_std.h"
 #include "energia.h"
+#include "esp_audio_dec_default.h"
+#include "esp_audio_simple_dec.h"
+#include "esp_audio_simple_dec_default.h"
 #include "esp_codec_dev.h"
 #include "esp_codec_dev_defaults.h"
 #include "esp_heap_caps.h"
@@ -42,6 +45,8 @@ static uint8_t *s_buf_mono = NULL;
 static uint8_t *s_buf_escritura = NULL;
 
 static volatile bool s_grabando = false;
+static volatile bool s_reproduciendo = false;
+static volatile bool s_parar_repro = false;
 static volatile bool s_al_maximo = false;
 static volatile bool s_error_escritura = false;
 static uint32_t s_max_bytes = 0;
@@ -49,6 +54,10 @@ static uint32_t s_bytes_escritos = 0;
 static uint32_t s_perdidos = 0;
 static FILE *s_fichero = NULL;
 static char s_ruta[RUTA_MAX];
+static int s_volumen = 70;
+
+#define GANANCIA_REPRO 2
+#define MAX_OPUS_RAM (3 * 1024 * 1024)
 
 bool audio_iniciar(i2c_master_bus_handle_t bus, int volumen, int ganancia_db)
 {
@@ -112,6 +121,7 @@ bool audio_iniciar(i2c_master_bus_handle_t bus, int volumen, int ganancia_db)
         ESP_LOGE(TAG, "No se pudo abrir el códec");
         return false;
     }
+    s_volumen = volumen;
     esp_codec_dev_set_out_vol(s_salida, volumen);
     esp_codec_dev_set_in_gain(s_entrada, (float)ganancia_db);
     esp_codec_dev_set_out_mute(s_salida, true);
@@ -361,4 +371,365 @@ bool audio_grabando(void)
 bool audio_grabacion_al_maximo(void)
 {
     return s_al_maximo;
+}
+
+// --- Reproducción Ogg Opus ---
+
+static int s_out_n = 0;
+static int s_rs_acc = 0;
+static int16_t s_out_estereo[FRAMES_BLOQUE * 2];
+
+static void vaciar_salida(void)
+{
+    if (s_out_n > 0 && s_salida) {
+        esp_codec_dev_write(s_salida, s_out_estereo, s_out_n * 4);
+        s_out_n = 0;
+    }
+}
+
+static void empujar_muestra(int16_t mono)
+{
+    s_out_estereo[s_out_n * 2] = mono;
+    s_out_estereo[s_out_n * 2 + 1] = mono;
+    s_out_n++;
+    if (s_out_n >= FRAMES_BLOQUE) {
+        vaciar_salida();
+    }
+}
+
+// Lleva PCM del decoder (cualquier tasa habitual de Opus) a 16 kHz estéreo del ES8311.
+static void alimentar_pcm(const int16_t *pcm, int bytes, int canales, int hz)
+{
+    if (hz <= 0 || canales <= 0 || bytes < canales * 2) {
+        return;
+    }
+    int frames = bytes / (canales * 2);
+    for (int i = 0; i < frames && !s_parar_repro; i++) {
+        int32_t suma = 0;
+        for (int c = 0; c < canales; c++) {
+            suma += pcm[i * canales + c];
+        }
+        int32_t mono32 = (suma / canales) * GANANCIA_REPRO;
+        if (mono32 > 32767) {
+            mono32 = 32767;
+        } else if (mono32 < -32768) {
+            mono32 = -32768;
+        }
+        int16_t mono = (int16_t)mono32;
+        s_rs_acc += AUDIO_HZ;
+        while (s_rs_acc >= hz && !s_parar_repro) {
+            empujar_muestra(mono);
+            s_rs_acc -= hz;
+        }
+    }
+}
+
+void audio_reproducir_parar(void)
+{
+    s_parar_repro = true;
+}
+
+void audio_reproduccion_ocupar(bool ocupada)
+{
+    s_reproduciendo = ocupada;
+}
+
+bool audio_reproduciendo(void)
+{
+    return s_reproduciendo;
+}
+
+bool audio_reproducir_opus(const char *ruta)
+{
+    if (!s_salida || !ruta || s_grabando) {
+        s_reproduciendo = false;
+        return false;
+    }
+    FILE *f = fopen(ruta, "rb");
+    if (!f) {
+        ESP_LOGE(TAG, "No se puede abrir %s", ruta);
+        s_reproduciendo = false;
+        return false;
+    }
+    if (fseek(f, 0, SEEK_END) != 0) {
+        fclose(f);
+        s_reproduciendo = false;
+        return false;
+    }
+    long tam_l = ftell(f);
+    if (tam_l <= 0) {
+        ESP_LOGE(TAG, "Opus vacio");
+        fclose(f);
+        s_reproduciendo = false;
+        return false;
+    }
+    size_t tam = (size_t)tam_l;
+    rewind(f);
+
+    // Preferimos PSRAM (sin pelear con e-Paper/SD). Si no cabe o no hay memoria,
+    // se decodifica leyendo de la SD a trozos.
+    uint8_t *archivo = NULL;
+    bool en_ram = false;
+    if (tam <= MAX_OPUS_RAM) {
+        archivo = heap_caps_malloc(tam, MALLOC_CAP_SPIRAM);
+        if (archivo && fread(archivo, 1, tam, f) == tam) {
+            en_ram = true;
+            fclose(f);
+            f = NULL;
+            ESP_LOGI(TAG, "Opus en PSRAM (%u bytes)", (unsigned)tam);
+        } else {
+            free(archivo);
+            archivo = NULL;
+            rewind(f);
+            ESP_LOGW(TAG, "Sin PSRAM para %u bytes; se lee desde SD", (unsigned)tam);
+        }
+    } else {
+        ESP_LOGW(TAG, "Opus %u bytes > %d; se lee desde SD", (unsigned)tam, MAX_OPUS_RAM);
+    }
+
+    static bool registrados = false;
+    if (!registrados) {
+        esp_audio_dec_register_default();
+        esp_audio_simple_dec_register_default();
+        registrados = true;
+    }
+    esp_audio_simple_dec_cfg_t cfg = {
+        .dec_type = ESP_AUDIO_SIMPLE_DEC_TYPE_OGG,
+    };
+    esp_audio_simple_dec_handle_t dec = NULL;
+    if (esp_audio_simple_dec_open(&cfg, &dec) != ESP_AUDIO_ERR_OK || !dec) {
+        ESP_LOGE(TAG, "No se pudo abrir el decoder Opus");
+        free(archivo);
+        if (f) {
+            fclose(f);
+        }
+        s_reproduciendo = false;
+        return false;
+    }
+
+    bool saltar = s_parar_repro;
+    s_parar_repro = false;
+    s_reproduciendo = true;
+    if (saltar) {
+        esp_audio_simple_dec_close(dec);
+        free(archivo);
+        if (f) {
+            fclose(f);
+        }
+        s_reproduciendo = false;
+        return true;
+    }
+    s_out_n = 0;
+    s_rs_acc = 0;
+    bool ok = true;
+    int info_hz = AUDIO_HZ;
+    int info_ch = 1;
+    bool info_lista = false;
+    int max_out = 16 * 1024;
+    uint8_t *salida = heap_caps_malloc(max_out, MALLOC_CAP_SPIRAM);
+    int cap_in = 16 * 1024;
+    uint8_t *entrada = en_ram ? NULL : heap_caps_malloc(cap_in, MALLOC_CAP_SPIRAM);
+    if (!salida || (!en_ram && !entrada)) {
+        esp_audio_simple_dec_close(dec);
+        free(archivo);
+        free(salida);
+        free(entrada);
+        if (f) {
+            fclose(f);
+        }
+        s_reproduciendo = false;
+        return false;
+    }
+
+    xSemaphoreTake(s_mutex_salida, portMAX_DELAY);
+    esp_codec_dev_set_out_vol(s_salida, 90);
+    esp_codec_dev_set_out_mute(s_salida, false);
+
+    if (en_ram) {
+        size_t pos = 0;
+        while (pos < tam && !s_parar_repro) {
+            size_t pos_antes = pos;
+            esp_audio_simple_dec_raw_t raw = {
+                .buffer = archivo + pos,
+                .len = (uint32_t)(tam - pos),
+                .eos = true,
+            };
+            while (raw.len && !s_parar_repro) {
+                esp_audio_simple_dec_out_t out = {.buffer = salida, .len = (uint32_t)max_out};
+                int ret = esp_audio_simple_dec_process(dec, &raw, &out);
+                if (ret == ESP_AUDIO_ERR_BUFF_NOT_ENOUGH && out.needed_size > (uint32_t)max_out) {
+                    uint8_t *nuevo = heap_caps_realloc(salida, out.needed_size, MALLOC_CAP_SPIRAM);
+                    if (!nuevo) {
+                        ok = false;
+                        raw.len = 0;
+                        break;
+                    }
+                    salida = nuevo;
+                    max_out = (int)out.needed_size;
+                    continue;
+                }
+                if (ret == ESP_AUDIO_ERR_DATA_LACK || ret == ESP_AUDIO_ERR_CONTINUE) {
+                    if (raw.consumed > 0 && raw.consumed <= raw.len) {
+                        pos += raw.consumed;
+                        raw.len -= raw.consumed;
+                        raw.buffer += raw.consumed;
+                        continue;
+                    }
+                    break;
+                }
+                if (ret != ESP_AUDIO_ERR_OK) {
+                    ESP_LOGW(TAG, "Decoder Opus: %d (se sigue)", ret);
+                    if (raw.consumed > 0 && raw.consumed <= raw.len) {
+                        pos += raw.consumed;
+                        raw.len -= raw.consumed;
+                        raw.buffer += raw.consumed;
+                    } else {
+                        pos++;
+                        if (raw.len) {
+                            raw.buffer++;
+                            raw.len--;
+                        }
+                    }
+                    continue;
+                }
+                if (out.decoded_size && !info_lista) {
+                    esp_audio_simple_dec_info_t info = {0};
+                    if (esp_audio_simple_dec_get_info(dec, &info) == ESP_AUDIO_ERR_OK && info.sample_rate > 0) {
+                        info_hz = info.sample_rate;
+                        info_ch = info.channel > 0 ? info.channel : 1;
+                        info_lista = true;
+                        ESP_LOGI(TAG, "Opus %d Hz, %d canales", info_hz, info_ch);
+                    }
+                }
+                if (out.decoded_size) {
+                    alimentar_pcm((const int16_t *)out.buffer, (int)out.decoded_size, info_ch, info_hz);
+                }
+                if (raw.consumed == 0) {
+                    break;
+                }
+                pos += raw.consumed;
+                raw.len -= raw.consumed;
+                raw.buffer += raw.consumed;
+            }
+            if (pos == pos_antes) {
+                break;
+            }
+        }
+    } else {
+        int pendiente = 0;
+        for (;;) {
+            if (s_parar_repro) {
+                break;
+            }
+            if (cap_in - pendiente < 2048 && cap_in < 64 * 1024) {
+                uint8_t *mas = heap_caps_realloc(entrada, cap_in * 2, MALLOC_CAP_SPIRAM);
+                if (mas) {
+                    entrada = mas;
+                    cap_in *= 2;
+                }
+            }
+            int leidos = (int)fread(entrada + pendiente, 1, (size_t)(cap_in - pendiente), f);
+            if (leidos < 0) {
+                leidos = 0;
+            }
+            esp_audio_simple_dec_raw_t raw = {
+                .buffer = entrada,
+                .len = (uint32_t)(pendiente + leidos),
+                .eos = leidos == 0,
+            };
+            if (raw.len == 0) {
+                break;
+            }
+            bool falta = false;
+            while (raw.len && !s_parar_repro) {
+                esp_audio_simple_dec_out_t out = {.buffer = salida, .len = (uint32_t)max_out};
+                int ret = esp_audio_simple_dec_process(dec, &raw, &out);
+                if (ret == ESP_AUDIO_ERR_BUFF_NOT_ENOUGH && out.needed_size > (uint32_t)max_out) {
+                    uint8_t *nuevo = heap_caps_realloc(salida, out.needed_size, MALLOC_CAP_SPIRAM);
+                    if (!nuevo) {
+                        ok = false;
+                        raw.len = 0;
+                        break;
+                    }
+                    salida = nuevo;
+                    max_out = (int)out.needed_size;
+                    continue;
+                }
+                if (ret == ESP_AUDIO_ERR_DATA_LACK || ret == ESP_AUDIO_ERR_CONTINUE) {
+                    if (raw.consumed > 0 && raw.consumed <= raw.len) {
+                        raw.len -= raw.consumed;
+                        raw.buffer += raw.consumed;
+                    }
+                    falta = true;
+                    break;
+                }
+                if (ret != ESP_AUDIO_ERR_OK) {
+                    ESP_LOGW(TAG, "Decoder Opus: %d (se sigue)", ret);
+                    if (raw.consumed > 0 && raw.consumed <= raw.len) {
+                        raw.len -= raw.consumed;
+                        raw.buffer += raw.consumed;
+                    } else if (raw.len) {
+                        raw.buffer++;
+                        raw.len--;
+                    } else {
+                        break;
+                    }
+                    continue;
+                }
+                if (out.decoded_size && !info_lista) {
+                    esp_audio_simple_dec_info_t info = {0};
+                    if (esp_audio_simple_dec_get_info(dec, &info) == ESP_AUDIO_ERR_OK && info.sample_rate > 0) {
+                        info_hz = info.sample_rate;
+                        info_ch = info.channel > 0 ? info.channel : 1;
+                        info_lista = true;
+                        ESP_LOGI(TAG, "Opus %d Hz, %d canales (SD)", info_hz, info_ch);
+                    }
+                }
+                if (out.decoded_size) {
+                    alimentar_pcm((const int16_t *)out.buffer, (int)out.decoded_size, info_ch, info_hz);
+                }
+                if (raw.consumed == 0) {
+                    falta = true;
+                    break;
+                }
+                raw.len -= raw.consumed;
+                raw.buffer += raw.consumed;
+            }
+            pendiente = (int)raw.len;
+            if (pendiente > 0 && raw.buffer != entrada) {
+                memmove(entrada, raw.buffer, (size_t)pendiente);
+            }
+            if (s_parar_repro || !ok) {
+                break;
+            }
+            if (leidos == 0) {
+                break;
+            }
+            if (falta && pendiente >= cap_in) {
+                ESP_LOGE(TAG, "El decoder no consume datos");
+                ok = false;
+                break;
+            }
+        }
+    }
+
+    vaciar_salida();
+    nota_t silencio = {0, 80};
+    escribir_nota(&silencio);
+    esp_codec_dev_set_out_mute(s_salida, true);
+    esp_codec_dev_set_out_vol(s_salida, s_volumen);
+    xSemaphoreGive(s_mutex_salida);
+
+    free(salida);
+    free(entrada);
+    free(archivo);
+    if (f) {
+        fclose(f);
+    }
+    esp_audio_simple_dec_close(dec);
+    s_reproduciendo = false;
+    s_parar_repro = false;
+    ESP_LOGI(TAG, "Reproducción %s (%s, %s)", ruta, ok ? "completa" : "interrumpida",
+             en_ram ? "PSRAM" : "SD");
+    return ok;
 }

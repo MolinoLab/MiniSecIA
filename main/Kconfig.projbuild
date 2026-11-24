@@ -60,7 +60,7 @@ menu "MiniSecIA"
     config MS_IMAGEN_HORAS
         int "Horas entre cambios de imagen en la pantalla (0 = solo manual)"
         range 0 720
-        default 6
+        default 4
 
     config MS_SYNC_IMAGENES_HORAS
         int "Horas entre sincronizaciones de imágenes con el servidor"

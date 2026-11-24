@@ -7,6 +7,7 @@ idf_component_register(
         "botones.c"
         "cliente.c"
         "energia.c"
+        "escucha.c"
         "imagenes.c"
         "pantalla.c"
         "red.c"
@@ -14,6 +15,7 @@ idf_component_register(
     INCLUDE_DIRS "."
     REQUIRES
         esp_adc
+        esp_audio_codec
         esp_driver_gpio
         esp_driver_i2c
         esp_driver_i2s

@@ -1,7 +1,10 @@
 // MiniSecIA: grabadora de bolsillo que envía notas de voz a ConvocAUTOrias (POST /voz).
 //
-// BOOT corto: grabar / terminar        PWR corto: cancelar la grabación, o estado de la cola
-// BOOT largo: sincronizar e imagen      PWR largo: apagar
+// BOOT corto: grabar / terminar. Durante una escucha, la anterior.
+// PWR corto:  cancelar la grabación, o sincronizar. Durante una escucha, la siguiente
+//             (si ya es la última, para).
+// BOOT largo: la escucha más reciente, incluidas las ya oídas (sin Wi-Fi)
+// PWR largo:  apagar
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -14,7 +17,7 @@
 #include "cliente.h"
 #include "driver/i2c_master.h"
 #include "energia.h"
-#include "esp_attr.h"
+#include "escucha.h"
 #include "esp_log.h"
 #include "esp_random.h"
 #include "esp_timer.h"
@@ -29,30 +32,39 @@
 
 static const char *TAG = "main";
 
-#define SYNC_AVISAR   (1 << 0)  // iniciada por el usuario: sonido con el resultado
-#define SYNC_IMAGENES (1 << 1)  // sincronizar imágenes aunque no toque, y cambiar la imagen
-#define SYNC_REVISAR  (1 << 2)  // despertar la tarea de sync (cola / imágenes si toca); no usar 0 con eSetBits
+#define SYNC_AVISAR   (1 << 0)  // sonido con el resultado
+#define SYNC_IMAGENES (1 << 1)  // forzar descarga de imágenes y avanzar a la siguiente (manual)
+#define SYNC_REVISAR  (1 << 2)  // despertar la tarea de sync; no usar 0 con eSetBits
+#define SYNC_SOLO_SUBIR (1 << 3)  // un intento de subir la cola, sin bajar audios ni imágenes
 #define LOTE_COLA 16
 #define BYTES_MIN_GRABACION (AUDIO_HZ * 2 / 2)  // 0,5 s
 #define BATERIA_BAJA_MV 3450
 #define REPOSO_RAPIDO_SEG 5
-
-// Fallos de subida seguidos (sin red o servidor caído): alargan la espera entre reintentos
-// durante el sueño para no gastar batería. En memoria RTC, sobrevive al sueño profundo.
-RTC_DATA_ATTR static uint32_t s_fallos_seguidos = 0;
-#define REINTENTO_MAX_SEG (6 * 3600)
+#define CLAVE_SUBIDA_OK "subida_ok"
 
 static i2c_master_bus_handle_t s_i2c = NULL;
 static TaskHandle_t s_tarea_sync = NULL;
 static volatile bool s_sync_en_curso = false;
 static volatile bool s_no_autorizado = false;
 static volatile int64_t s_actividad_us = 0;
-static volatile int64_t s_ultimo_intento_us = 0;
 static bool s_reposo_rapido = false;
 static bool s_audio_ok = false;
+static bool s_hablo_respuesta = false;  // clima u otra respuesta Opus; no hace falta el tono OK
 static uint32_t s_seq = 0;
 static uint32_t s_instancia = 0;
 static char s_grabacion[RUTA_MAX];
+
+// true = la última subida llegó al servidor; tras grabar se puede intentar otra vez.
+// false = falló (sin red, etc.): solo se reintenta con PWR corto.
+static bool ultima_subida_ok(void)
+{
+    return estado_leer_u32(CLAVE_SUBIDA_OK, 1) != 0;
+}
+
+static void marcar_subida_ok(bool ok)
+{
+    estado_guardar_u32(CLAVE_SUBIDA_OK, ok ? 1 : 0);
+}
 
 static int64_t ahora_us(void)
 {
@@ -98,6 +110,7 @@ static int subir_cola(void)
 {
     static char rutas[LOTE_COLA][RUTA_MAX];
     int ultimo = -1;
+    s_hablo_respuesta = false;
     for (;;) {
         int total = 0;
         int n = almacen_listar_cola(rutas, LOTE_COLA, &total);
@@ -106,10 +119,18 @@ static int subir_cola(void)
         }
         for (int i = 0; i < n; i++) {
             char rid[80], iso[24];
+            char audio_path[96] = {0};
             request_id(rutas[i], rid, sizeof(rid), iso, sizeof(iso));
-            resultado_subida_t r = cliente_subir(rutas[i], rid, iso);
+            resultado_subida_t r = cliente_subir(rutas[i], rid, iso, audio_path, sizeof(audio_path));
             ultimo = r;
             actividad();
+            if (r == SUBIDA_OK && audio_path[0]) {
+                // Clima u otra respuesta hablada: reproducir y borrar (no va a /escucha).
+                if (cliente_reproducir_respuesta(audio_path)) {
+                    s_hablo_respuesta = true;
+                }
+                actividad();
+            }
             switch (r) {
             case SUBIDA_OK:
             case SUBIDA_PENDIENTE:
@@ -162,18 +183,22 @@ static void tarea_sync(void *arg)
         xTaskNotifyWait(0, UINT32_MAX, &bits, portMAX_DELAY);
         bool avisar = bits & SYNC_AVISAR;
         bool forzar_img = bits & SYNC_IMAGENES;
+        bool solo_subir = bits & SYNC_SOLO_SUBIR;
         int en_cola = almacen_montada() ? almacen_contar_cola() : 0;
-        bool img = almacen_montada() && (forzar_img || imagenes_toca_sincronizar());
-        ESP_LOGI(TAG, "Sync bits=0x%lx cola=%d img=%d", (unsigned long)bits, en_cola, img ? 1 : 0);
-        if (en_cola == 0 && !img) {
+        bool img = !solo_subir && almacen_montada() && (forzar_img || imagenes_toca_sincronizar());
+        // PWR corto baja audios. Tras grabar (si subida_ok) solo se intenta la cola.
+        bool bajar = avisar && !solo_subir && almacen_montada();
+        ESP_LOGI(TAG, "Sync bits=0x%lx cola=%d img=%d bajar=%d", (unsigned long)bits, en_cola, img ? 1 : 0,
+                 bajar ? 1 : 0);
+        if (en_cola == 0 && !img && !bajar) {
             continue;
         }
         s_sync_en_curso = true;
-        s_ultimo_intento_us = ahora_us();
         actividad();
 
         if (!ajustes_servidor_configurado() || s_no_autorizado) {
             ESP_LOGW(TAG, "Servidor o Wi-Fi sin configurar (o token rechazado)");
+            marcar_subida_ok(false);
             if (avisar) {
                 audio_tono(TONO_ERROR);
             }
@@ -182,30 +207,40 @@ static void tarea_sync(void *arg)
                 energia_led(LED_PARPADEO);
             }
             if (!red_conectar()) {
-                s_fallos_seguidos++;
-                if (avisar && en_cola) {
+                marcar_subida_ok(false);
+                if (avisar) {
                     audio_tono(TONO_EN_COLA);
                 }
             } else {
                 int r = en_cola ? subir_cola() : -1;
-                if (r == SUBIDA_REINTENTAR) {
-                    s_fallos_seguidos++;
-                } else {
-                    s_fallos_seguidos = 0;
+                if (r == SUBIDA_REINTENTAR || r == SUBIDA_ERROR_CONFIG) {
+                    marcar_subida_ok(false);
+                } else if (en_cola > 0) {
+                    // OK / pendiente / vacía / rechazada: el servidor respondió.
+                    marcar_subida_ok(true);
                 }
-                if (avisar) {
-                    tono_resultado(r);
+                if (bajar && !s_no_autorizado) {
+                    escucha_sincronizar();
                 }
-                if (img) {
+                if (img && !s_no_autorizado) {
                     imagenes_sincronizar(forzar_img);
                 }
                 red_desconectar();
+                if (avisar && !audio_grabando() && !audio_reproduciendo()) {
+                    if (s_hablo_respuesta && (r == SUBIDA_OK || r < 0)) {
+                        // Ya se oyó la respuesta hablada (temperatura/previsión).
+                    } else if (r < 0) {
+                        audio_tono(TONO_OK);
+                    } else {
+                        tono_resultado(r);
+                    }
+                }
             }
             if (!audio_grabando()) {
                 energia_led(LED_APAGADO);
             }
         }
-        if (forzar_img) {
+        if (forzar_img && !solo_subir) {
             imagenes_siguiente();
         }
         s_sync_en_curso = false;
@@ -234,7 +269,7 @@ static void empezar_grabacion(void)
     energia_led(LED_FIJO);
 }
 
-static void terminar_grabacion(bool cancelar)
+static void terminar_grabacion(bool cancelar, bool intentar_subir)
 {
     uint32_t bytes = audio_grabar_parar(cancelar);
     energia_led(s_sync_en_curso ? LED_PARPADEO : LED_APAGADO);
@@ -252,7 +287,10 @@ static void terminar_grabacion(bool cancelar)
         return;
     }
     audio_tono(TONO_FIN);
-    pedir_sync(SYNC_AVISAR);
+    // Solo reabre Wi-Fi si la última subida fue bien. Si falló, espera a PWR corto.
+    if (intentar_subir && ultima_subida_ok()) {
+        pedir_sync(SYNC_AVISAR | SYNC_SOLO_SUBIR);
+    }
 }
 
 // --- Energía ---
@@ -276,7 +314,13 @@ static void esperar_pantalla(void)
 static void apagar(void)
 {
     if (audio_grabando()) {
-        terminar_grabacion(false);  // se queda en la cola para la próxima vez
+        terminar_grabacion(false, false);
+    }
+    if (escucha_activa()) {
+        escucha_parar();
+        for (int i = 0; i < 50 && escucha_activa(); i++) {
+            vTaskDelay(pdMS_TO_TICKS(20));
+        }
     }
     audio_tono(TONO_APAGADO);
     esperar_pantalla();
@@ -288,14 +332,9 @@ static void apagar(void)
 
 static void dormir(void)
 {
+    // El Wi-Fi no se busca solo: la cola espera a un PWR corto. El temporizador
+    // solo despierta para rotar la imagen en local.
     uint32_t seg = 0;
-    if (almacen_montada() && almacen_contar_cola() > 0 && ajustes_servidor_configurado() && !s_no_autorizado) {
-        uint32_t factor = 1u << (s_fallos_seguidos < 5 ? s_fallos_seguidos : 5);
-        seg = (uint32_t)g_ajustes.reintento_min * 60 * factor;
-        if (seg > REINTENTO_MAX_SEG) {
-            seg = REINTENTO_MAX_SEG;
-        }
-    }
     uint32_t rot = imagenes_segundos_hasta_rotacion();
     if (rot && (seg == 0 || rot < seg)) {
         seg = rot;
@@ -311,30 +350,31 @@ static void manejar_boton(evento_boton_t ev)
     s_reposo_rapido = false;
     switch (ev) {
     case EV_BOOT_CORTO:
+        if (escucha_activa()) {
+            escucha_anterior();
+            break;
+        }
         if (audio_grabando()) {
-            terminar_grabacion(false);
+            terminar_grabacion(false, true);
         } else {
             empezar_grabacion();
         }
         break;
     case EV_PWR_CORTO:
         if (audio_grabando()) {
-            terminar_grabacion(true);
+            terminar_grabacion(true, false);
+        } else if (escucha_activa()) {
+            escucha_siguiente();
         } else {
-            int n = almacen_montada() ? almacen_contar_cola() : 0;
-            if (n == 0) {
-                audio_tono(TONO_OK);
-            } else {
-                audio_pitidos(n);
-                pedir_sync(SYNC_AVISAR);
-            }
+            // Sync de cola/audios/manifiesto de imágenes; la foto de pantalla
+            // solo rota por el periodo imagen_horas, no aquí.
+            pedir_sync(SYNC_AVISAR);
             avisar_bateria();
         }
         break;
     case EV_BOOT_LARGO:
         if (!audio_grabando()) {
-            audio_pitidos(1);
-            pedir_sync(SYNC_AVISAR | SYNC_IMAGENES);
+            escucha_empezar();
         }
         break;
     case EV_PWR_LARGO:
@@ -397,16 +437,11 @@ void app_main(void)
     switch (causa) {
     case DESPERTAR_ENCENDIDO:
         avisar_bateria();
-        // Al encender: bajar/rotar imágenes (refresco ~20 s). Sin esto, con cola vacía
-        // y sync_img reciente la pantalla no cambia sola.
-        pedir_sync(SYNC_IMAGENES);
         break;
     case DESPERTAR_PWR:
-        pedir_sync(SYNC_AVISAR);
-        break;
+        break;  // la sync es un PWR corto ya despierto
     case DESPERTAR_TEMPORIZADOR:
         s_reposo_rapido = true;
-        pedir_sync(SYNC_REVISAR);
         break;
     case DESPERTAR_BOOT:
         break;  // botones_iniciar ya ha registrado la pulsación
@@ -421,19 +456,23 @@ void app_main(void)
             actividad();
             manejar_boton(ev);
         }
-        if (audio_grabando()) {
+        if (audio_grabando() || escucha_activa()) {
             actividad();
+        }
+        if (audio_grabando()) {
             if (audio_grabacion_al_maximo()) {
-                terminar_grabacion(false);
+                terminar_grabacion(false, true);
             }
+            continue;
+        }
+        // Durante una escucha no rotar e-Paper ni dormir: el refresco (~20 s)
+        // lee la SD a la vez que el Opus y corta la reproducción.
+        if (escucha_activa()) {
             continue;
         }
         int64_t t = ahora_us();
         if (t - ultima_revision_us > 30LL * 1000000) {
             ultima_revision_us = t;
-            if (!s_sync_en_curso && t - s_ultimo_intento_us > (int64_t)g_ajustes.reintento_min * 60 * 1000000) {
-                pedir_sync(0);
-            }
             imagenes_rotar_si_toca();
         }
         int64_t reposo = (int64_t)(s_reposo_rapido ? REPOSO_RAPIDO_SEG : g_ajustes.reposo_seg) * 1000000;

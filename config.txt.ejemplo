@@ -22,6 +22,6 @@ device_id=bolsillo
 #max_grabacion_seg=300     # 10-420
 #reposo_seg=90             # inactividad antes de dormir
 #reintento_min=15          # reintento de subida con audios en cola (se alarga si sigue fallando)
-#imagen_horas=6            # cambio de imagen; 0 = solo manual
+#imagen_horas=4            # cambio de imagen en local; 0 = solo manual (no al sincronizar)
 #sync_imagenes_horas=24
 #timeout_http_seg=240

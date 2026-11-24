@@ -14,54 +14,65 @@ Grabadora de bolsillo sobre la **Waveshare ESP32-S3-ePaper-1.54G**. Pulsas un bo
 |--------|-----------|
 | Encender (batería) | Mantén **PWR** hasta que arranque |
 | Apagar | **PWR largo** (~2,5 s). Cuatro notas bajando |
-| Sueño profundo | Tras ~90 s sin actividad. Lo despiertan BOOT, PWR o el temporizador |
+| Sueño profundo | Tras ~90 s sin actividad. Lo despiertan BOOT, PWR o el temporizador de la imagen |
 
-Con USB conectado no se apaga del todo: se queda dormido. Con batería baja (&lt; 3,45 V) suenan tres pitidos muy agudos.
+Con USB conectado no se apaga del todo: se queda dormido. Con batería baja (&lt; 3,45 V) suenan tres pitidos muy agudos al sincronizar o al encender.
+
+El Wi‑Fi **no se busca solo**. La cola espera en la microSD hasta que pulses **PWR corto** (por ejemplo al volver a casa).
 
 ### Grabar una nota
 
 1. **BOOT corto** → un pitido agudo: estás grabando (LED fijo).
 2. Habla con claridad. Empieza por la palabra clave si quieres forzar el tipo (`tarea`, `idea`, `evento`, `comprar`, …).
-3. **BOOT corto** otra vez → dos notas bajando: guardado en la cola y se intenta subir.
-4. Espera el resultado (ver [Sonidos](#sonidos)).
+3. **BOOT corto** otra vez → dos notas bajando: el WAV queda en la cola. Si la **última subida fue bien**, intenta subir ahora; si falló (sin red, etc.), solo almacena.
+4. **PWR corto** en reposo → Wi‑Fi, sube la cola, baja los audios de escucha y puede sincronizar el manifiesto de imágenes (sin cambiar la de pantalla). Si la subida va bien, las próximas grabaciones volverán a intentarlo solas.
 
 Límites: mínimo ~0,5 s; máximo por defecto 5 minutos. **PWR corto** mientras grabas **cancela** (tres notas bajando).
+
+### Escuchar
+
+Los artículos que pidas en Telegram con `/escucha` llegan como Ogg Opus a `/escucha` en la microSD durante la sincronización.
+
+- **BOOT largo**: reproduce la más reciente, también si ya se oyó (sin Wi‑Fi).
+- **BOOT corto** mientras suena: la anterior.
+- **PWR corto** mientras suena: la siguiente. Si ya es la última, para.
+- Las ya oídas siguen en `/escucha` o en `/escucha/hechos` y se pueden volver a oír.
 
 ### Botones (resumen)
 
 | Pulsación | Función |
 |-----------|---------|
-| **BOOT corto** | Empezar / terminar grabación |
-| **PWR corto** | Grabando: cancelar. En reposo: estado de la cola (N pitidos) y reintentar subida |
-| **BOOT largo** (~1,5 s) | Sincronizar (cola + imágenes) y cambiar la imagen de la pantalla |
+| **BOOT corto** | Empezar / terminar grabación. Si está sonando una escucha, la anterior |
+| **PWR corto** | Grabando: cancelar. Escuchando: la siguiente, o parar si ya es la última. En reposo: sincronizar (cola + audios; imágenes solo descarga, sin cambiar pantalla) |
+| **BOOT largo** (~1,5 s) | Reproducir la escucha más reciente |
 | **PWR largo** (~2,5 s) | Apagar |
 
-Dormido: **BOOT** despierta y empieza a grabar; **PWR** despierta y sube la cola.
+Dormido: **BOOT** despierta y empieza a grabar. **PWR** solo despierta; hay que pulsar **PWR corto** ya despierto para sincronizar.
 
 ### Sonidos
 
 | Sonido | Significado |
 |--------|-------------|
 | Un pitido agudo | Grabando |
-| Dos notas bajando | Grabación guardada en cola |
-| Tres notas subiendo | Procesado OK (creado en Nextcloud) o cola vacía |
+| Dos notas bajando | Grabación guardada en cola (sube ahora si la última fue OK; si no, con PWR corto) |
+| Tres notas subiendo | Procesado OK (creado en Nextcloud) o sincronización hecha sin audios nuevos |
 | Dos pitidos iguales | Recibido pero en *pendientes* (sin palabra clave o no se entendió) |
 | Dos notas bajando, más largas | Sin red / servidor caído: el audio sigue en cola |
-| Tono grave largo | Error (audio vacío, token, sin SD…) |
+| Tono grave largo | Error (audio vacío, token, sin SD, nada que escuchar…) |
 | Tres notas bajando cortas | Cancelado o demasiado corto |
 | Cuatro notas bajando | Apagando |
 | Tres pitidos muy agudos | Batería baja |
-| *n* pitidos (PWR en reposo) | Hay *n* audios en cola (máx. 10 pitidos) |
+| Un pitido corto | Empieza a reproducir un audio de `/escucha` |
 
 LED fijo = grabando. LED parpadeando = sincronizando.
 
 ### Pantalla
 
-Solo imágenes decorativas (200×200, 4 colores). Cambian cada ~6 h o con **BOOT largo**. El refresco completo tarda ~20 s y **parpadea**: es normal en e-Paper de color.
+Solo imágenes decorativas (200×200, 4 colores). Cambian en local cada `imagen_horas` (por defecto 4 h), no al sincronizar contenido. El refresco completo tarda ~20 s y **parpadea**: es normal en e-Paper de color.
 
 ### Sin cobertura
 
-Los WAV quedan en `/cola` de la microSD. Con Wi‑Fi vuelve a intentar (desde 15 min, con espera que se alarga si sigue fallando, hasta 6 h). También puedes forzar con **PWR corto** o **BOOT largo**.
+Los WAV quedan en `/cola` de la microSD. Tras grabar solo se abre Wi‑Fi si `subida_ok` (última subida correcta). Si no hay red, se marca el fallo y no se vuelve a intentar hasta **PWR corto**, que además baja Opus y puede descargar imágenes.
 
 ---
 
@@ -90,6 +101,8 @@ Carpetas útiles (se crean solas si hace falta):
 
 ```text
 /cola/          audios pendientes de subir
+/escucha/       Ogg Opus bajados (se pueden volver a oír)
+/escucha/hechos/ escuchas de antes; también se vuelven a oír
 /fallidos/      rechazados por tamaño
 /img/fijas/     tus imágenes .bin (el firmware no las borra)
 /img/remotas/   descargadas del servidor
@@ -137,8 +150,8 @@ Luego prueba una grabación corta («tarea probar MiniSecIA»).
 | `ganancia_mic` | 30 | dB, 0–42 |
 | `max_grabacion_seg` | 300 | 10–420 |
 | `reposo_seg` | 90 | Segundos hasta sueño profundo |
-| `reintento_min` | 15 | Base de reintento de cola |
-| `imagen_horas` | 6 | 0 = solo cambio manual |
+| `reintento_min` | 15 | Reservado; el Wi‑Fi ya no se reintenta solo |
+| `imagen_horas` | 4 | Horas entre cambios de imagen; 0 = solo manual |
 | `sync_imagenes_horas` | 24 | Periodo de descarga de imágenes |
 | `timeout_http_seg` | 240 | Timeout de `POST /voz` |
 
@@ -149,6 +162,7 @@ También se pueden fijar valores por defecto en `idf.py menuconfig` → **MiniSe
 ## Comunicación con el servidor
 
 - `POST /voz` — multipart WAV + `Authorization: Bearer …`, `X-Request-Id`, `grabado_en`
+- `GET /audios/manifest` y `GET /audios/{id}.opus`, `POST /audios/{id}/ack`
 - `GET /imagenes/manifest?formato=txt` y `GET /imagenes/{id}.bin`
 
 | Respuesta | Qué hace el dispositivo |
@@ -183,7 +197,8 @@ Copia a `/img/fijas/` en la SD, o déjalas en el servidor para que el dispositiv
 | `main/placa.h` | Mapa de pines |
 | `main/ajustes.c` | `config.txt` → NVS |
 | `main/almacen.c` | microSD y cola de WAV |
-| `main/audio.c` | ES8311: grabación y tonos |
+| `main/audio.c` | ES8311: grabación, tonos y reproducción Ogg Opus |
+| `main/escucha.c` | Descarga y cola de audios para oír |
 | `main/red.c` | Wi‑Fi multi-red y SNTP |
 | `main/cliente.c` | HTTPS: subida y descargas |
 | `main/imagenes.c` | Rotación y sync de imágenes |
@@ -200,7 +215,7 @@ Copia a `/img/fijas/` en la SD, o déjalas en el servidor para que el dispositiv
 |---------|-----------|
 | `token=NO` / sin redes | `config.txt` en la SD; reiniciar tras insertarla |
 | 401 en subidas | Token distinto al de `ESP32_TOKENS` (comprueba carácter a carácter) |
-| No cambia la imagen | BOOT largo; espera ~20 s; debe haber `.bin` en fijas/remotas o sync OK |
+| No cambia la imagen | Esperar `imagen_horas` (o despertar por timer); debe haber `.bin` en fijas/remotas |
 | Pitidos no suenan | Volumen; amplificador (`PIN_PA`) |
 | Micrófono en silencio | Canal I2S en `audio.c` (izquierdo por defecto) |
 | No flashea | BOOT+RESET; cable de datos; puerto COM correcto |
