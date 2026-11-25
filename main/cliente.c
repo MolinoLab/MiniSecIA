@@ -24,6 +24,8 @@ typedef struct {
     char estado[16];
     char audio_flag[4];
     char audio_path[96];
+    char meditacion[4];
+    char meditacion_min[8];
 } respuesta_t;
 
 static esp_err_t manejador(esp_http_client_event_t *evt)
@@ -36,6 +38,10 @@ static esp_err_t manejador(esp_http_client_event_t *evt)
             strlcpy(r->audio_flag, evt->header_value, sizeof(r->audio_flag));
         } else if (strcasecmp(evt->header_key, "X-Voz-Audio-Path") == 0) {
             strlcpy(r->audio_path, evt->header_value, sizeof(r->audio_path));
+        } else if (strcasecmp(evt->header_key, "X-Voz-Meditacion") == 0) {
+            strlcpy(r->meditacion, evt->header_value, sizeof(r->meditacion));
+        } else if (strcasecmp(evt->header_key, "X-Voz-Meditacion-Min") == 0) {
+            strlcpy(r->meditacion_min, evt->header_value, sizeof(r->meditacion_min));
         }
     }
     return ESP_OK;
@@ -100,10 +106,13 @@ static int leer_cuerpo(esp_http_client_handle_t c, char *buf, size_t n)
 }
 
 resultado_subida_t cliente_subir(const char *ruta, const char *request_id, const char *grabado_en,
-                                 char *audio_path, size_t audio_path_n)
+                                 char *audio_path, size_t audio_path_n, int *meditacion_min)
 {
     if (audio_path && audio_path_n > 0) {
         audio_path[0] = '\0';
+    }
+    if (meditacion_min) {
+        *meditacion_min = 0;
     }
     long tam = almacen_tamano(ruta);
     FILE *f = tam > 0 ? fopen(ruta, "rb") : NULL;
@@ -175,6 +184,18 @@ resultado_subida_t cliente_subir(const char *ruta, const char *request_id, const
     if (estado == 200) {
         if (strcmp(resp.estado, "pendiente") == 0) {
             res = SUBIDA_PENDIENTE;
+        } else if (strcmp(resp.estado, "meditacion") == 0 || resp.meditacion[0] == '1') {
+            res = SUBIDA_MEDITACION;
+            if (meditacion_min) {
+                int m = atoi(resp.meditacion_min);
+                if (m < 1) {
+                    m = 10;
+                }
+                if (m > 120) {
+                    m = 120;
+                }
+                *meditacion_min = m;
+            }
         } else {
             res = SUBIDA_OK;
             bool hay_audio = (strcmp(resp.estado, "audio") == 0) || (resp.audio_flag[0] == '1');

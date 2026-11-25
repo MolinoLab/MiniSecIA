@@ -270,7 +270,7 @@ static time_t proximo_inicio_utc(time_t ahora)
 
 uint32_t meditacion_segundos_hasta(void)
 {
-    if (!s_cfg.activo || !reloj_valido()) {
+    if (!reloj_valido()) {
         return 0;
     }
     time_t ahora = time(NULL);
@@ -280,6 +280,9 @@ uint32_t meditacion_segundos_hasta(void)
             return 1;
         }
         return (uint32_t)((time_t)fin_at - ahora);
+    }
+    if (!s_cfg.activo) {
+        return 0;
     }
     time_t prox = proximo_inicio_utc(ahora);
     if (prox <= 0) {
@@ -301,13 +304,15 @@ uint32_t meditacion_preparar_sueno(uint32_t segundos_imagen)
     timer_evento_t ev = TIMER_NADA;
     time_t ahora = time(NULL);
 
-    if (s_cfg.activo && reloj_valido()) {
+    // Una sesión en curso (voz o programada) siempre despierta al fin, aunque el
+    // calendario de avisos esté pausado.
+    if (reloj_valido()) {
         uint32_t fin_at = estado_leer_u32(CLAVE_FIN, 0);
         if (fin_at > 0) {
             uint32_t hasta_fin = ((time_t)fin_at <= ahora) ? 1 : (uint32_t)((time_t)fin_at - ahora);
             seg = hasta_fin;
             ev = TIMER_MEDITACION_FIN;
-        } else {
+        } else if (s_cfg.activo) {
             time_t prox = proximo_inicio_utc(ahora);
             if (prox > 0) {
                 uint32_t hasta = (prox <= ahora) ? 1 : (uint32_t)(prox - ahora);
@@ -327,18 +332,28 @@ uint32_t meditacion_preparar_sueno(uint32_t segundos_imagen)
     return seg;
 }
 
+void meditacion_lanzar_ahora(int duracion_min)
+{
+    int dur = duracion_min > 0 ? duracion_min : s_cfg.duracion_min;
+    if (dur < 1) {
+        dur = 10;
+    }
+    if (dur > 120) {
+        dur = 120;
+    }
+    ESP_LOGI(TAG, "Inicio de meditación por voz (%d min)", dur);
+    audio_tono(TONO_MEDITACION);
+    time_t ahora = time(NULL);
+    estado_guardar_u32(CLAVE_LAST, (uint32_t)ahora);
+    estado_guardar_u32(CLAVE_FIN, (uint32_t)(ahora + (time_t)dur * 60));
+}
+
 void meditacion_al_despertar(void)
 {
     timer_evento_t ev = (timer_evento_t)estado_leer_u32(CLAVE_EV, TIMER_NADA);
     estado_guardar_u32(CLAVE_EV, TIMER_NADA);
     if (ev == TIMER_MEDITACION_INICIO) {
-        ESP_LOGI(TAG, "Inicio de meditación (%d min)", s_cfg.duracion_min);
-        audio_tono(TONO_MEDITACION);
-        time_t ahora = time(NULL);
-        estado_guardar_u32(CLAVE_LAST, (uint32_t)ahora);
-        if (s_cfg.duracion_min > 0) {
-            estado_guardar_u32(CLAVE_FIN, (uint32_t)(ahora + (time_t)s_cfg.duracion_min * 60));
-        }
+        meditacion_lanzar_ahora(s_cfg.duracion_min);
     } else if (ev == TIMER_MEDITACION_FIN) {
         ESP_LOGI(TAG, "Fin de meditación");
         audio_tono(TONO_MEDITACION_FIN);

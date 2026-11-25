@@ -23,7 +23,7 @@ El Wi‑Fi **no se busca solo**. La cola espera en la microSD hasta que pulses *
 ### Grabar una nota
 
 1. **BOOT corto** → un pitido agudo: estás grabando (LED fijo).
-2. Habla con claridad. Empieza por la palabra clave si quieres forzar el tipo (`tarea`, `idea`, `evento`, `comprar`, …).
+2. Habla con claridad. Empieza por la palabra clave si quieres forzar el tipo (`tarea`, `idea`, `evento`, `comprar`, `meditación`, …).
 3. **BOOT corto** otra vez → dos notas bajando: el WAV queda en la cola. Si la **última subida fue bien**, intenta subir ahora; si falló (sin red, etc.), solo almacena.
 4. **PWR corto** en reposo → Wi‑Fi, sube la cola, baja los audios de escucha y puede sincronizar el manifiesto de imágenes (sin cambiar la de pantalla). Si la subida va bien, las próximas grabaciones volverán a intentarlo solas.
 
@@ -73,9 +73,11 @@ LED fijo = grabando. LED parpadeando = sincronizando.
 Desde Telegram: `/meditacion` (estado), `/meditacion 4 10`, `/meditacion cada 3h 5m`,
 `/meditacion ventana 8 22`, `/meditacion pausar` / `reanudar`.
 
-La config llega al bolsillo en el próximo **PWR corto**. El dispositivo despierta solo,
-suena el tono de meditación, y al cabo de la duración el tono de fin. No hace falta Wi‑Fi
-entre avisos (sí para cambiar la programación).
+También por voz: di **«meditación»** (o «meditación 5» para forzar minutos). Al subir el
+audio el bolsillo suena el tono de inicio, cuenta los minutos configurados y suena el de fin.
+
+La config programada llega en el próximo **PWR corto**. Los avisos automáticos despiertan
+solos; no hace falta Wi‑Fi entre tonos (sí para cambiar la programación).
 
 ### Pantalla
 

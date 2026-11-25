@@ -11,6 +11,8 @@ Las fechas son las del trabajo en el dispositivo (hora local Europe/Madrid).
 - **Meditación**: despertar por temporizador con tono propio (inicio y fin de práctica).
   Config vía `GET /meditacion/config` en cada sync (PWR corto); se programa desde Telegram
   (`/meditacion`). Respeta ventana horaria y pausa.
+- Voz **«meditación»** / «meditación N»: el servidor responde `X-Voz-Estado: meditacion`;
+  el dispositivo toca el tono de inicio, cuenta los minutos y el de fin.
 
 ---
 

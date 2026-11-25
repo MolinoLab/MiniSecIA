@@ -7,6 +7,7 @@
 typedef enum {
     SUBIDA_OK,              // 200, X-Voz-Estado: ok|audio
     SUBIDA_PENDIENTE,       // 200, X-Voz-Estado: pendiente (guardado en pendientes.csv)
+    SUBIDA_MEDITACION,      // 200, X-Voz-Estado: meditacion (tono local + cuenta atrás)
     SUBIDA_VACIA,           // 422 con X-Voz-Estado: vacio (sin voz); se borra
     SUBIDA_RECHAZADA,       // 413: demasiado grande; a /sdcard/fallidos
     SUBIDA_ERROR_CONFIG,    // 400/401/403: token o device_id mal configurados; se para la cola
@@ -15,8 +16,9 @@ typedef enum {
 
 // POST /voz en multipart. `grabado_en` en ISO UTC o "" si el reloj no tenía hora.
 // Si el servidor responde con audio efímero, escribe el path en `audio_path` (p. ej. /voz/respuesta/id.opus).
+// Si es meditación, deja la duración en minutos en `meditacion_min` (>0) cuando no es NULL.
 resultado_subida_t cliente_subir(const char *ruta, const char *request_id, const char *grabado_en,
-                                 char *audio_path, size_t audio_path_n);
+                                 char *audio_path, size_t audio_path_n, int *meditacion_min);
 
 // Baja el Opus de respuesta, lo reproduce, lo borra en local y hace ACK en el servidor.
 bool cliente_reproducir_respuesta(const char *audio_path);

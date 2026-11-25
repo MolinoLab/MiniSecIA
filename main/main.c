@@ -121,8 +121,9 @@ static int subir_cola(void)
         for (int i = 0; i < n; i++) {
             char rid[80], iso[24];
             char audio_path[96] = {0};
+            int med_min = 0;
             request_id(rutas[i], rid, sizeof(rid), iso, sizeof(iso));
-            resultado_subida_t r = cliente_subir(rutas[i], rid, iso, audio_path, sizeof(audio_path));
+            resultado_subida_t r = cliente_subir(rutas[i], rid, iso, audio_path, sizeof(audio_path), &med_min);
             ultimo = r;
             actividad();
             if (r == SUBIDA_OK && audio_path[0]) {
@@ -131,10 +132,16 @@ static int subir_cola(void)
                     s_hablo_respuesta = true;
                 }
                 actividad();
+            } else if (r == SUBIDA_MEDITACION) {
+                meditacion_lanzar_ahora(med_min);
+                s_hablo_respuesta = true;  // no pitido OK encima del tono de meditación
+                s_reposo_rapido = true;    // dormir pronto para despertar al fin
+                actividad();
             }
             switch (r) {
             case SUBIDA_OK:
             case SUBIDA_PENDIENTE:
+            case SUBIDA_MEDITACION:
             case SUBIDA_VACIA:
                 remove(rutas[i]);
                 break;
@@ -229,8 +236,9 @@ static void tarea_sync(void *arg)
                 }
                 red_desconectar();
                 if (avisar && !audio_grabando() && !audio_reproduciendo()) {
-                    if (s_hablo_respuesta && (r == SUBIDA_OK || r < 0)) {
-                        // Ya se oyó la respuesta hablada (temperatura/previsión).
+                    if (s_hablo_respuesta &&
+                        (r == SUBIDA_OK || r == SUBIDA_MEDITACION || r < 0)) {
+                        // Ya sonó clima Opus o tono de meditación.
                     } else if (r < 0) {
                         audio_tono(TONO_OK);
                     } else {

@@ -26,3 +26,7 @@ uint32_t meditacion_preparar_sueno(uint32_t segundos_imagen);
 
 // Tras DESPERTAR_TEMPORIZADOR: toca el tono que corresponda y programa el fin si aplica.
 void meditacion_al_despertar(void);
+
+// Inicio inmediato (voz «meditación»): tono de inicio y programa el fin a `duracion_min`.
+// Si duracion_min <= 0 usa la configurada en NVS.
+void meditacion_lanzar_ahora(int duracion_min);
