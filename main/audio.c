@@ -172,6 +172,11 @@ static const nota_t T_EN_COLA[] = {{523, 150}, {0, 50}, {392, 220}, FIN_NOTAS};
 static const nota_t T_CANCELADO[] = {{440, 80}, {0, 40}, {330, 80}, {0, 40}, {220, 200}, FIN_NOTAS};
 static const nota_t T_APAGADO[] = {{880, 110}, {660, 110}, {440, 110}, {220, 300}, FIN_NOTAS};
 static const nota_t T_BATERIA[] = {{1760, 60}, {0, 60}, {1760, 60}, {0, 60}, {1760, 60}, FIN_NOTAS};
+// Cuenco suave: más grave y espaciado que OK/sync, inconfundible.
+static const nota_t T_MEDITACION[] = {
+    {392, 280}, {0, 120}, {523, 320}, {0, 160}, {392, 400}, FIN_NOTAS};
+static const nota_t T_MEDITACION_FIN[] = {
+    {523, 200}, {0, 80}, {392, 260}, {0, 100}, {330, 360}, FIN_NOTAS};
 
 static void escribir_nota(const nota_t *n)
 {
@@ -226,6 +231,8 @@ void audio_tono(tono_t tono)
         [TONO_ERROR] = T_ERROR,         [TONO_EN_COLA] = T_EN_COLA,
         [TONO_CANCELADO] = T_CANCELADO, [TONO_APAGADO] = T_APAGADO,
         [TONO_BATERIA_BAJA] = T_BATERIA,
+        [TONO_MEDITACION] = T_MEDITACION,
+        [TONO_MEDITACION_FIN] = T_MEDITACION_FIN,
     };
     reproducir(TABLA[tono]);
 }

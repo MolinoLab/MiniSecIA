@@ -63,8 +63,19 @@ Dormido: **BOOT** despierta y empieza a grabar. **PWR** solo despierta; hay que 
 | Cuatro notas bajando | Apagando |
 | Tres pitidos muy agudos | Batería baja |
 | Un pitido corto | Empieza a reproducir un audio de `/escucha` |
+| Tres notas graves espaciadas (cuenco) | Aviso de meditación / sentirte |
+| Tres notas bajando suaves | Fin de los minutos de meditación |
 
 LED fijo = grabando. LED parpadeando = sincronizando.
+
+### Meditación
+
+Desde Telegram: `/meditacion` (estado), `/meditacion 4 10`, `/meditacion cada 3h 5m`,
+`/meditacion ventana 8 22`, `/meditacion pausar` / `reanudar`.
+
+La config llega al bolsillo en el próximo **PWR corto**. El dispositivo despierta solo,
+suena el tono de meditación, y al cabo de la duración el tono de fin. No hace falta Wi‑Fi
+entre avisos (sí para cambiar la programación).
 
 ### Pantalla
 
@@ -164,6 +175,7 @@ También se pueden fijar valores por defecto en `idf.py menuconfig` → **MiniSe
 - `POST /voz` — multipart WAV + `Authorization: Bearer …`, `X-Request-Id`, `grabado_en`
 - `GET /audios/manifest` y `GET /audios/{id}.opus`, `POST /audios/{id}/ack`
 - `GET /imagenes/manifest?formato=txt` y `GET /imagenes/{id}.bin`
+- `GET /meditacion/config` — manifiesto de alertas de descanso (Telegram `/meditacion`)
 
 | Respuesta | Qué hace el dispositivo |
 |-----------|-------------------------|
@@ -199,6 +211,7 @@ Copia a `/img/fijas/` en la SD, o déjalas en el servidor para que el dispositiv
 | `main/almacen.c` | microSD y cola de WAV |
 | `main/audio.c` | ES8311: grabación, tonos y reproducción Ogg Opus |
 | `main/escucha.c` | Descarga y cola de audios para oír |
+| `main/meditacion.c` | Alertas de descanso (timer + tono) |
 | `main/red.c` | Wi‑Fi multi-red y SNTP |
 | `main/cliente.c` | HTTPS: subida y descargas |
 | `main/imagenes.c` | Rotación y sync de imágenes |

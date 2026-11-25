@@ -28,4 +28,5 @@ Sí puede correr en local. El firmware ya usa despertar por timer (rotación de 
 
 ### Estado
 
-Aplazado. No implementar hasta definir UX (voz vs botones vs híbrido).
+Aplazado como temporizador genérico por voz/botones. Las **alertas de meditación**
+sí están implementadas (timer local + config por Telegram `/meditacion`).

@@ -4,6 +4,16 @@ Cambios relevantes del firmware MiniSecIA (Waveshare ESP32-S3-ePaper-1.54G).
 El formato sigue la idea de [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/).
 Las fechas son las del trabajo en el dispositivo (hora local Europe/Madrid).
 
+## [Sin publicar] — 2026-11-25
+
+### Añadido
+
+- **Meditación**: despertar por temporizador con tono propio (inicio y fin de práctica).
+  Config vía `GET /meditacion/config` en cada sync (PWR corto); se programa desde Telegram
+  (`/meditacion`). Respeta ventana horaria y pausa.
+
+---
+
 ## [Sin publicar] — 2026-11-24
 
 ### Añadido

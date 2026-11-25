@@ -24,6 +24,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "imagenes.h"
+#include "meditacion.h"
 #include "nvs_flash.h"
 #include "pantalla.h"
 #include "placa.h"
@@ -221,6 +222,7 @@ static void tarea_sync(void *arg)
                 }
                 if (bajar && !s_no_autorizado) {
                     escucha_sincronizar();
+                    meditacion_sincronizar();
                 }
                 if (img && !s_no_autorizado) {
                     imagenes_sincronizar(forzar_img);
@@ -333,12 +335,9 @@ static void apagar(void)
 static void dormir(void)
 {
     // El Wi-Fi no se busca solo: la cola espera a un PWR corto. El temporizador
-    // solo despierta para rotar la imagen en local.
-    uint32_t seg = 0;
+    // despierta para rotar la imagen o para avisar de meditación.
     uint32_t rot = imagenes_segundos_hasta_rotacion();
-    if (rot && (seg == 0 || rot < seg)) {
-        seg = rot;
-    }
+    uint32_t seg = meditacion_preparar_sueno(rot);
     red_desconectar();
     audio_apagar();
     almacen_desmontar();
@@ -414,6 +413,7 @@ void app_main(void)
     ajustes_cargar(sd);
     s_audio_ok = audio_iniciar(s_i2c, g_ajustes.volumen, g_ajustes.ganancia_mic);
     pantalla_iniciar();
+    meditacion_iniciar();
 
     s_instancia = estado_leer_u32("instancia", 0);
     if (s_instancia == 0) {
@@ -442,6 +442,7 @@ void app_main(void)
         break;  // la sync es un PWR corto ya despierto
     case DESPERTAR_TEMPORIZADOR:
         s_reposo_rapido = true;
+        meditacion_al_despertar();
         break;
     case DESPERTAR_BOOT:
         break;  // botones_iniciar ya ha registrado la pulsación

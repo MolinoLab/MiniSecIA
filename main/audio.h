@@ -15,6 +15,8 @@ typedef enum {
     TONO_CANCELADO,
     TONO_APAGADO,
     TONO_BATERIA_BAJA,
+    TONO_MEDITACION,      // aviso de descanso / sentirte
+    TONO_MEDITACION_FIN,  // fin de los minutos de práctica
 } tono_t;
 
 bool audio_iniciar(i2c_master_bus_handle_t bus, int volumen, int ganancia_db);
