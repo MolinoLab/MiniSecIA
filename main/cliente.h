@@ -8,6 +8,7 @@ typedef enum {
     SUBIDA_OK,              // 200, X-Voz-Estado: ok|audio
     SUBIDA_PENDIENTE,       // 200, X-Voz-Estado: pendiente (guardado en pendientes.csv)
     SUBIDA_MEDITACION,      // 200, X-Voz-Estado: meditacion (tono local + cuenta atrás)
+    SUBIDA_REALIDAD,        // 200, X-Voz-Estado: realidad (chirp local)
     SUBIDA_VACIA,           // 422 con X-Voz-Estado: vacio (sin voz); se borra
     SUBIDA_RECHAZADA,       // 413: demasiado grande; a /sdcard/fallidos
     SUBIDA_ERROR_CONFIG,    // 400/401/403: token o device_id mal configurados; se para la cola

@@ -65,6 +65,7 @@ Dormido: **BOOT** despierta y empieza a grabar. **PWR** solo despierta; hay que 
 | Un pitido corto | Empieza a reproducir un audio de `/escucha` |
 | Tres notas graves espaciadas (cuenco) | Aviso de meditación / sentirte |
 | Tres notas bajando suaves | Fin de los minutos de meditación |
+| Dos chasquidos muy agudos y cortos | Checkeo de realidad |
 
 LED fijo = grabando. LED parpadeando = sincronizando.
 
@@ -72,6 +73,10 @@ LED fijo = grabando. LED parpadeando = sincronizando.
 
 Desde Telegram: `/meditacion` (estado), `/meditacion 4 10`, `/meditacion cada 3h 5m`,
 `/meditacion ventana 8 22`, `/meditacion pausar` / `reanudar`.
+
+**Checkeo de realidad** (chirp corto tipo insecto, sin minutos): `/realidad` o `/checkeo`,
+`/realidad 6`, `/realidad cada 2h`, `/realidad ventana 8 22`, `pausar` / `reanudar`.
+Voz «realidad» / «checkeo» dispara el chirp al momento.
 
 También por voz: di **«meditación»** (o «meditación 5» para forzar minutos). Al subir el
 audio el bolsillo suena el tono de inicio, cuenta los minutos configurados y suena el de fin.
@@ -178,6 +183,7 @@ También se pueden fijar valores por defecto en `idf.py menuconfig` → **MiniSe
 - `GET /audios/manifest` y `GET /audios/{id}.opus`, `POST /audios/{id}/ack`
 - `GET /imagenes/manifest?formato=txt` y `GET /imagenes/{id}.bin`
 - `GET /meditacion/config` — manifiesto de alertas de descanso (Telegram `/meditacion`)
+- `GET /realidad/config` — manifiesto de checkeos de realidad (Telegram `/realidad`)
 
 | Respuesta | Qué hace el dispositivo |
 |-----------|-------------------------|
@@ -214,6 +220,7 @@ Copia a `/img/fijas/` en la SD, o déjalas en el servidor para que el dispositiv
 | `main/audio.c` | ES8311: grabación, tonos y reproducción Ogg Opus |
 | `main/escucha.c` | Descarga y cola de audios para oír |
 | `main/meditacion.c` | Alertas de descanso (timer + tono) |
+| `main/realidad.c` | Checkeos de realidad (timer + chirp) |
 | `main/red.c` | Wi‑Fi multi-red y SNTP |
 | `main/cliente.c` | HTTPS: subida y descargas |
 | `main/imagenes.c` | Rotación y sync de imágenes |

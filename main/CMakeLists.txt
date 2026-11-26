@@ -10,6 +10,7 @@ idf_component_register(
         "escucha.c"
         "imagenes.c"
         "meditacion.c"
+        "realidad.c"
         "pantalla.c"
         "red.c"
         "reloj.c"

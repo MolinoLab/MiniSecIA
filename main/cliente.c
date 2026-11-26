@@ -26,6 +26,7 @@ typedef struct {
     char audio_path[96];
     char meditacion[4];
     char meditacion_min[8];
+    char realidad[4];
 } respuesta_t;
 
 static esp_err_t manejador(esp_http_client_event_t *evt)
@@ -42,6 +43,8 @@ static esp_err_t manejador(esp_http_client_event_t *evt)
             strlcpy(r->meditacion, evt->header_value, sizeof(r->meditacion));
         } else if (strcasecmp(evt->header_key, "X-Voz-Meditacion-Min") == 0) {
             strlcpy(r->meditacion_min, evt->header_value, sizeof(r->meditacion_min));
+        } else if (strcasecmp(evt->header_key, "X-Voz-Realidad") == 0) {
+            strlcpy(r->realidad, evt->header_value, sizeof(r->realidad));
         }
     }
     return ESP_OK;
@@ -196,6 +199,8 @@ resultado_subida_t cliente_subir(const char *ruta, const char *request_id, const
                 }
                 *meditacion_min = m;
             }
+        } else if (strcmp(resp.estado, "realidad") == 0 || resp.realidad[0] == '1') {
+            res = SUBIDA_REALIDAD;
         } else {
             res = SUBIDA_OK;
             bool hay_audio = (strcmp(resp.estado, "audio") == 0) || (resp.audio_flag[0] == '1');

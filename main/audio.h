@@ -17,6 +17,7 @@ typedef enum {
     TONO_BATERIA_BAJA,
     TONO_MEDITACION,      // aviso de descanso / sentirte
     TONO_MEDITACION_FIN,  // fin de los minutos de práctica
+    TONO_REALIDAD,        // checkeo de realidad: chirp corto tipo insecto
 } tono_t;
 
 bool audio_iniciar(i2c_master_bus_handle_t bus, int volumen, int ganancia_db);

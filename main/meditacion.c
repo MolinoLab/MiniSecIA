@@ -9,6 +9,7 @@
 #include "audio.h"
 #include "cliente.h"
 #include "esp_log.h"
+#include "realidad.h"
 #include "reloj.h"
 
 static const char *TAG = "meditacion";
@@ -298,6 +299,11 @@ uint32_t meditacion_segundos_hasta(void)
     return (uint32_t)d;
 }
 
+void meditacion_limpiar_evento(void)
+{
+    estado_guardar_u32(CLAVE_EV, TIMER_NADA);
+}
+
 uint32_t meditacion_preparar_sueno(uint32_t segundos_imagen)
 {
     uint32_t seg = 0;
@@ -327,8 +333,19 @@ uint32_t meditacion_preparar_sueno(uint32_t segundos_imagen)
         ev = TIMER_IMAGEN;
     }
 
+    // Realidad: si es más cercana, gana el despertar (y limpia el evento de meditación).
+    uint32_t seg_rea = realidad_segundos_hasta();
+    if (seg_rea > 0 && (seg == 0 || seg_rea < seg)) {
+        seg = seg_rea;
+        ev = TIMER_NADA;
+        realidad_armar_despertar(seg);
+    } else {
+        realidad_limpiar_evento();
+    }
+
     estado_guardar_u32(CLAVE_EV, (uint32_t)ev);
-    ESP_LOGI(TAG, "Sueño: %lu s evento=%d", (unsigned long)seg, (int)ev);
+    ESP_LOGI(TAG, "Sueño: %lu s evento=%d rea=%lu", (unsigned long)seg, (int)ev,
+             (unsigned long)seg_rea);
     return seg;
 }
 

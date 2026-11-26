@@ -4,6 +4,15 @@ Cambios relevantes del firmware MiniSecIA (Waveshare ESP32-S3-ePaper-1.54G).
 El formato sigue la idea de [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/).
 Las fechas son las del trabajo en el dispositivo (hora local Europe/Madrid).
 
+## [Sin publicar] — 2026-11-26
+
+### Añadido
+
+- **Checkeo de realidad**: despertar con chirp corto tipo insecto (más agudo).
+  Config vía `GET /realidad/config` en cada sync; Telegram `/realidad` (alias `/checkeo`).
+  Misma lógica de veces/día o intervalo, ventana y pausar/reanudar; sin cuenta atrás.
+- Voz **«realidad»** / «checkeo»: `X-Voz-Estado: realidad` → chirp local inmediato.
+
 ## [Sin publicar] — 2026-11-25
 
 ### Añadido

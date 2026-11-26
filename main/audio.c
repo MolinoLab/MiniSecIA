@@ -177,6 +177,9 @@ static const nota_t T_MEDITACION[] = {
     {392, 280}, {0, 120}, {523, 320}, {0, 160}, {392, 400}, FIN_NOTAS};
 static const nota_t T_MEDITACION_FIN[] = {
     {523, 200}, {0, 80}, {392, 260}, {0, 100}, {330, 360}, FIN_NOTAS};
+// Insecto: dos chasquidos agudos y muy cortos.
+static const nota_t T_REALIDAD[] = {
+    {2800, 28}, {0, 35}, {3200, 22}, FIN_NOTAS};
 
 static void escribir_nota(const nota_t *n)
 {
@@ -233,6 +236,7 @@ void audio_tono(tono_t tono)
         [TONO_BATERIA_BAJA] = T_BATERIA,
         [TONO_MEDITACION] = T_MEDITACION,
         [TONO_MEDITACION_FIN] = T_MEDITACION_FIN,
+        [TONO_REALIDAD] = T_REALIDAD,
     };
     reproducir(TABLA[tono]);
 }

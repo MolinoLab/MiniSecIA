@@ -26,6 +26,7 @@
 #include "imagenes.h"
 #include "meditacion.h"
 #include "nvs_flash.h"
+#include "realidad.h"
 #include "pantalla.h"
 #include "placa.h"
 #include "red.h"
@@ -137,11 +138,16 @@ static int subir_cola(void)
                 s_hablo_respuesta = true;  // no pitido OK encima del tono de meditación
                 s_reposo_rapido = true;    // dormir pronto para despertar al fin
                 actividad();
+            } else if (r == SUBIDA_REALIDAD) {
+                realidad_lanzar_ahora();
+                s_hablo_respuesta = true;  // no pitido OK encima del chirp
+                actividad();
             }
             switch (r) {
             case SUBIDA_OK:
             case SUBIDA_PENDIENTE:
             case SUBIDA_MEDITACION:
+            case SUBIDA_REALIDAD:
             case SUBIDA_VACIA:
                 remove(rutas[i]);
                 break;
@@ -230,6 +236,7 @@ static void tarea_sync(void *arg)
                 if (bajar && !s_no_autorizado) {
                     escucha_sincronizar();
                     meditacion_sincronizar();
+                    realidad_sincronizar();
                 }
                 if (img && !s_no_autorizado) {
                     imagenes_sincronizar(forzar_img);
@@ -237,8 +244,9 @@ static void tarea_sync(void *arg)
                 red_desconectar();
                 if (avisar && !audio_grabando() && !audio_reproduciendo()) {
                     if (s_hablo_respuesta &&
-                        (r == SUBIDA_OK || r == SUBIDA_MEDITACION || r < 0)) {
-                        // Ya sonó clima Opus o tono de meditación.
+                        (r == SUBIDA_OK || r == SUBIDA_MEDITACION || r == SUBIDA_REALIDAD ||
+                         r < 0)) {
+                        // Ya sonó clima Opus, meditación o chirp de realidad.
                     } else if (r < 0) {
                         audio_tono(TONO_OK);
                     } else {
@@ -343,7 +351,7 @@ static void apagar(void)
 static void dormir(void)
 {
     // El Wi-Fi no se busca solo: la cola espera a un PWR corto. El temporizador
-    // despierta para rotar la imagen o para avisar de meditación.
+    // despierta para rotar la imagen, meditación o checkeo de realidad.
     uint32_t rot = imagenes_segundos_hasta_rotacion();
     uint32_t seg = meditacion_preparar_sueno(rot);
     red_desconectar();
@@ -422,6 +430,7 @@ void app_main(void)
     s_audio_ok = audio_iniciar(s_i2c, g_ajustes.volumen, g_ajustes.ganancia_mic);
     pantalla_iniciar();
     meditacion_iniciar();
+    realidad_iniciar();
 
     s_instancia = estado_leer_u32("instancia", 0);
     if (s_instancia == 0) {
@@ -451,6 +460,7 @@ void app_main(void)
     case DESPERTAR_TEMPORIZADOR:
         s_reposo_rapido = true;
         meditacion_al_despertar();
+        realidad_al_despertar();
         break;
     case DESPERTAR_BOOT:
         break;  // botones_iniciar ya ha registrado la pulsación

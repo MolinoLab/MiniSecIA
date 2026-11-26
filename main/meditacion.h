@@ -21,8 +21,10 @@ bool meditacion_activa(void);
 // Segundos hasta el próximo inicio o fin de meditación (0 = no hay).
 uint32_t meditacion_segundos_hasta(void);
 
-// Elige el próximo despertar entre imagen y meditación; guarda el motivo en NVS.
+// Elige el próximo despertar entre imagen, meditación y realidad; guarda el motivo en NVS.
 uint32_t meditacion_preparar_sueno(uint32_t segundos_imagen);
+
+void meditacion_limpiar_evento(void);
 
 // Tras DESPERTAR_TEMPORIZADOR: toca el tono que corresponda y programa el fin si aplica.
 void meditacion_al_despertar(void);
